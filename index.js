@@ -47,7 +47,8 @@ async function askGemini(userId, userMessage) {
     }
   );
   const data = await response.json();
-  const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Вибачте, не зміг відповісти.";
+  console.log("Gemini response:", JSON.stringify(data));
+const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Вибачте, не зміг відповісти.";
   userHistories[userId].push({ role: "model", parts: [{ text: reply }] });
   return reply;
 }
