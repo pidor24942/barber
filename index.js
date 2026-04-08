@@ -3,9 +3,8 @@ const app = express();
 app.use(express.json());
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Налаштуйте свій барбершоп тут
 const BARBERSHOP = {
   name: "Barbershop Pro",
   weekdays: "10:00 – 20:00",
@@ -29,75 +28,52 @@ const SYSTEM_PROMPT = `Ти — ввічливий асистент барбер
 
 Якщо питання не стосується барбершопа — ввічливо скажи, що можеш допомогти лише з питаннями про салон.`;
 
-// Зберігаємо історію розмов для кожного користувача
 const userHistories = {};
 
-async function askClaude(userId, userMessage) {
+async function askGemini(userId, userMessage) {
   if (!userHistories[userId]) userHistories[userId] = [];
-
-  userHistories[userId].push({ role: "user", content: userMessage });
-
-  // Тримаємо тільки останні 20 повідомлень щоб не перевантажувати
+  userHistories[userId].push({ role: "user", parts: [{ text: userMessage }] });
   if (userHistories[userId].length > 20) {
     userHistories[userId] = userHistories[userId].slice(-20);
   }
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      system: SYSTEM_PROMPT,
-      messages: userHistories[userId],
-    }),
-  });
-
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: userHistories[userId],
+      }),
+    }
+  );
   const data = await response.json();
-  const reply = data.content.map((b) => b.text || "").join("");
-
-  userHistories[userId].push({ role: "assistant", content: reply });
-
+  const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Вибачте, не зміг відповісти.";
+  userHistories[userId].push({ role: "model", parts: [{ text: reply }] });
   return reply;
 }
 
 async function sendTelegramMessage(chatId, text) {
-  await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text }),
-    }
-  );
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
 }
 
-// Вебхук від Telegram
 app.post("/webhook", async (req, res) => {
-  res.sendStatus(200); // відповідаємо одразу щоб Telegram не повторював
-
+  res.sendStatus(200);
   const message = req.body?.message;
   if (!message?.text) return;
-
   const chatId = message.chat.id;
   const userId = message.from.id;
   const text = message.text;
-
-  // Команда /start
   if (text === "/start") {
-    await sendTelegramMessage(
-      chatId,
-      `Привіт! Я бот барбершопа "${BARBERSHOP.name}" 💈\n\nЗапитайте мене про:\n• Ціни на послуги\n• Години роботи\n• Адресу`
-    );
+    await sendTelegramMessage(chatId, `Привіт! Я бот барбершопа "${BARBERSHOP.name}" 💈\n\nЗапитайте мене про:\n• Ціни на послуги\n• Години роботи\n• Адресу`);
     return;
   }
-
   try {
-    const reply = await askClaude(userId, text);
+    const reply = await askGemini(userId, text);
     await sendTelegramMessage(chatId, reply);
   } catch (err) {
     console.error(err);
