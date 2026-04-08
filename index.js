@@ -17,16 +17,10 @@ const BARBERSHOP = {
 };
 
 const SYSTEM_PROMPT = `Ти — ввічливий асистент барбершопа "${BARBERSHOP.name}". Відповідай коротко і по суті, лише українською.
-
-Інформація про барбершоп:
-- Години роботи: Пн–Пт ${BARBERSHOP.weekdays}, Сб–Нд ${BARBERSHOP.weekend}
-- Стрижка: ${BARBERSHOP.haircut}
-- Борода: ${BARBERSHOP.beard}
-- Стрижка + борода: ${BARBERSHOP.combo}
-- Дитяча стрижка: ${BARBERSHOP.kids}
-- Адреса: ${BARBERSHOP.address}
-
-Якщо питання не стосується барбершопа — ввічливо скажи, що можеш допомогти лише з питаннями про салон.`;
+Години роботи: Пн–Пт ${BARBERSHOP.weekdays}, Сб–Нд ${BARBERSHOP.weekend}
+Стрижка: ${BARBERSHOP.haircut}, Борода: ${BARBERSHOP.beard}, Стрижка+борода: ${BARBERSHOP.combo}, Дитяча: ${BARBERSHOP.kids}
+Адреса: ${BARBERSHOP.address}
+Якщо питання не про барбершоп — скажи що можеш відповідати лише на питання про салон.`;
 
 const userHistories = {};
 
@@ -38,6 +32,7 @@ async function askGemini(userId, userMessage) {
   }
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${GEMINI_API_KEY}`,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -47,8 +42,8 @@ async function askGemini(userId, userMessage) {
     }
   );
   const data = await response.json();
-  console.log("Gemini response:", JSON.stringify(data));
-const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Вибачте, не зміг відповісти.";
+  console.log("Gemini:", JSON.stringify(data).slice(0, 300));
+  const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Вибачте, не зміг відповісти.";
   userHistories[userId].push({ role: "model", parts: [{ text: reply }] });
   return reply;
 }
@@ -69,19 +64,19 @@ app.post("/webhook", async (req, res) => {
   const userId = message.from.id;
   const text = message.text;
   if (text === "/start") {
-    await sendTelegramMessage(chatId, `Привіт! Я бот барбершопа "${BARBERSHOP.name}" 💈\n\nЗапитайте мене про:\n• Ціни на послуги\n• Години роботи\n• Адресу`);
+    await sendTelegramMessage(chatId, `Привіт! Я бот барбершопа 💈\nПитайте про ціни, години роботи, адресу.`);
     return;
   }
   try {
     const reply = await askGemini(userId, text);
     await sendTelegramMessage(chatId, reply);
   } catch (err) {
-    console.error(err);
-    await sendTelegramMessage(chatId, "Вибачте, сталася помилка. Спробуйте ще раз.");
+    console.error("Error:", err);
+    await sendTelegramMessage(chatId, "Вибачте, сталася помилка.");
   }
 });
 
-app.get("/", (req, res) => res.send("Barbershop bot is running!"));
+app.get("/", (req, res) => res.send("OK"));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
